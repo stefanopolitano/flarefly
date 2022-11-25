@@ -11,6 +11,7 @@ import zfit
 import mplhep
 from particle import Particle
 from flarefly.utils import Logger
+from flarefly.data_handler import DataHandler
 import flarefly.custom_pdfs as cpdf
 
 
@@ -21,7 +22,7 @@ class F2MassFitter:
     https://github.com/zfit/zfit
     """
 
-    def __init__(self, data_handler, name_signal_pdf, name_background_pdf, name="", chi2_loss=False):
+    def __init__(self, data_handler, name_signal_pdf, name_background_pdf, name="", chi2_loss=False, **kwargs):
         """
         Initialize the F2MassFitter class
         Parameters
@@ -78,6 +79,13 @@ class F2MassFitter:
         chi2_loss: bool
             chi2 minimization if True, nll minmization else
             Default value to False
+
+        kwargs: dict
+            Optional arguments for the signal and background pdfs
+
+            - prefit_lower_limits: list of lower limits for the prefit (default: lower limit of the data)
+
+            - prefit_upper_limits: list of upper limits for the prefit (default: upper limit of the data)
         """
         self._data_handler_ = data_handler
         self._name_signal_pdf_ = name_signal_pdf
@@ -96,6 +104,14 @@ class F2MassFitter:
         self._total_pdf_ = None
         self._total_pdf_binned_ = None
         self._fit_result_ = None
+        if 'prefit_lower_limits' in kwargs:
+            self._prefit_lower_limits_ = kwargs["prefit_lower_limits"]
+        else:
+            self._prefit_lower_limits_ = [min(self._data_handler_.get_x_values())]
+        if 'prefit_upper_limits' in kwargs:
+            self._prefit_upper_limits_ = kwargs["prefit_upper_limits"]
+        else:
+            self._prefit_upper_limits_ = [max(self._data_handler_.get_x_values())]
         self._init_sgn_pars_ = [{} for _ in enumerate(name_signal_pdf)]
         self._init_bkg_pars_ = [{} for _ in enumerate(name_signal_pdf)]
         self._limits_sgn_pars_ = [{} for _ in enumerate(name_signal_pdf)]
@@ -485,13 +501,53 @@ class F2MassFitter:
 
         self._total_pdf_binned_ = zfit.pdf.BinnedFromUnbinnedPDF(self._total_pdf_, obs)
 
-    def __prefit(self):
+    def __prefit(self, lower_limits, upper_limits, bkg_index=0):
         """
         Helper function to perform a prefit to the sidebands
+
+        Parameters
+        -------------------------------------------------
+        lower_limits: list
+            list of lower limits for the sidebands
+
+        upper_limits: list
+            list of upper limits for the sidebands
+
+        bkg_index: int
+            index of the background pdf to use for the prefit (default: 0)
         """
-        # pylint: disable=fixme
-        #TODO: implement me
-        Logger('Prefit step to be implemented', 'WARNING')
+
+        x_values = self._data_handler_.get_x_values()
+        weights = [0. for _ in range(len(x_values))]
+        for i, x_value in enumerate(x_values):
+            for _, (lower, upper) in enumerate(zip(lower_limits, upper_limits)):
+                if lower < x_value < upper:
+                    weights[i] = 1.
+        df_data_prefit = self._data_handler_.to_pandas()
+        df_data_prefit['weights'] = weights
+        data_prefit_sel = df_data_prefit.query('weights > 0', inplace=False)
+        data_prefit_sel = data_prefit_sel.drop(columns=['weights'], axis=1)
+        dh_prefit = DataHandler(data_prefit_sel,
+                                var_name=self._data_handler_.get_var_name())
+        del data_prefit_sel, df_data_prefit, weights, x_values # free memory
+
+        if self._data_handler_.get_is_binned():
+            # chi2 loss
+            pdf = zfit.pdf.BinnedFromUnbinnedPDF(self._background_pdf_[bkg_index], dh_prefit.get_obs())
+            if self._chi2_loss_:
+                loss = zfit.loss.BinnedChi2(pdf, dh_prefit.get_binned_data())
+            # nll loss
+            else:
+                loss = zfit.loss.BinnedNLL(pdf, dh_prefit.get_binned_data())
+        else:
+            pdf = self._background_pdf_[bkg_index]
+            loss = zfit.loss.UnbinnedNLL(model=pdf, data=dh_prefit.get_data())
+        results = self._minimizer_.minimize(loss = loss)
+        for _, (par, prefit) in enumerate(zip(self._init_bkg_pars_[bkg_index],
+                                              results.params.keys())):
+            self.set_background_initpar(bkg_index, par,
+                                        results.params.get(prefit)['value'],
+                                        limits=self._limits_bkg_pars_[bkg_index][par])
 
     def __get_all_fracs(self):
         """
@@ -536,8 +592,7 @@ class F2MassFitter:
         self.__build_total_pdf()
         self.__build_total_pdf_binned()
         # pylint: disable=fixme
-        self.__prefit() #TODO: implement me
-
+        self.__prefit(self._prefit_lower_limits_, self._prefit_upper_limits_, bkg_index=0)
         if self._data_handler_.get_is_binned():
             # chi2 loss
             if self._chi2_loss_:
