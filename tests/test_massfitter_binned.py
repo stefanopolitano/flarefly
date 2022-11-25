@@ -26,7 +26,9 @@ for bkg_pdf in BKGPDFSDPLUS:
         FITTERBINNEDDPLUS.append(F2MassFitter(DATABINNEDDPLUS,
                                  name_signal_pdf=[sgn_pdf, "gaussian"],
                                  name_background_pdf=[bkg_pdf],
-                                 name=f"{bkg_pdf}_{sgn_pdf}"))
+                                 name=f"{bkg_pdf}_{sgn_pdf}",
+                                 prefit_lower_limits=[1.75, 1.9],
+                                 prefit_upper_limits=[1.83, 2.]))
         FITTERBINNEDDPLUS[-1].set_particle_mass(0, mass=1.872, fix=True)
         FITTERBINNEDDPLUS[-1].set_particle_mass(1, pdg_id=413, limits=[2.000, 2.020])
         FITTERBINNEDDPLUS[-1].set_signal_initpar(0, "frac", 0.3, limits=[0.2, 0.4])

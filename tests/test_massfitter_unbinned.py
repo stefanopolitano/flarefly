@@ -15,8 +15,10 @@ DATA = DataHandler(np.concatenate((DATASGN, DATABKG), axis=0),
                    var_name=r'$M$ (GeV/$c^{2}$)', limits=LIMITS)
 
 FITTER = F2MassFitter(DATA, name_signal_pdf=['gaussian'],
-                      name_background_pdf=['expo'])
-FITTER.set_background_initpar(0, 'lam', 0.1, limits=[-10., 10.], fix=False)
+                      name_background_pdf=['expo'],
+                      prefit_lower_limits=[1.75, 1.9],
+                      prefit_upper_limits=[1.83, 2.0])
+FITTER.set_background_initpar(0, 'lam', 0.1, limits=[-20., 20.], fix=False)
 FITRES = FITTER.mass_zfit()
 FIG = FITTER.plot_mass_fit(figsize=(10, 10))
 
