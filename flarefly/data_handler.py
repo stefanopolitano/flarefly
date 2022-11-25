@@ -294,6 +294,21 @@ class DataHandler:
 
         return data_values
 
+    def get_x_values(self):
+        """
+        Get the x values of the data
+
+        Returns
+        -------------------------------------------------
+        x_values: array
+            The x values of the data
+        """
+        if self.get_is_binned():
+            return self.get_bin_center()
+        else:
+            return zfit.run(self.get_data()[:, 0])
+
+
     def to_pandas(self):
         """
         returns data in pandas df
